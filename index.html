@@ -784,8 +784,7 @@
         if (
           result.purchaseBaseAfterPurchase !== null &&
           result.purchaseBaseAfterPurchase >= safeTarget &&
-          result.finalBase >= safeTarget &&
-          (result.minLowAfterPurchase === null || result.minLowAfterPurchase >= 0)
+          result.finalBase >= safeTarget
         ) {
           return candidate;
         }
