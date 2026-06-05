@@ -936,7 +936,7 @@
       setText(els.safeTargetPreview, money(safeTarget));
       setText(els.targetHitPreview, hit ? `${hit.date} / ${money(hit.base)}` : "Not reached");
       setText(els.monthEndPreview, monthEndEntry ? `${monthEndEntry.date} / ${money(monthEndEntry.base)}` : "--");
-      setText(els.purchaseDayPreview, purchaseDate ? `${purchaseDate} / ${money(state.purchaseAmount)}` : (purchaseEvent ? "Not feasible" : "--"));
+      setText(els.purchaseDayPreview, purchaseDate ? `${purchaseDate} / ${money(state.purchaseAmount)}` : (purchaseEvent ? "No purchase day found" : "--"));
 
       const modeLine = state.mode === "safe"
         ? "Mode: trim at safe target"
@@ -953,6 +953,12 @@
         monthEndEntry ? `Month end on ${monthEndEntry.date} with base ${money(monthEndEntry.base)}` : "No month-end data"
       ];
       els.echo.textContent = lines.join("\n");
+
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch {
+        // Ignore storage failures in restricted browser contexts.
+      }
     }
 
     function loadExample() {
