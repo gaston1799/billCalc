@@ -821,8 +821,18 @@
       row.querySelector('[data-action="remove"]').addEventListener("click", () => {
         row.remove();
         calculate();
+        persistState();
       });
-      row.querySelectorAll("input, select").forEach((el) => el.addEventListener("input", calculate));
+      row.querySelectorAll("input, select").forEach((el) => {
+        el.addEventListener("input", () => {
+          calculate();
+          persistState();
+        });
+        el.addEventListener("change", () => {
+          calculate();
+          persistState();
+        });
+      });
       return row;
     }
 
@@ -842,6 +852,7 @@
       if (!state.bills || state.bills.length === 0) els.billsBody.appendChild(renderRow());
       enforceStartDateRule();
       calculate();
+      persistState();
     }
 
     function readState() {
@@ -862,6 +873,14 @@
 
     function saveState() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(readState()));
+    }
+
+    function persistState() {
+      try {
+        saveState();
+      } catch {
+        // Ignore storage failures in restricted browser contexts.
+      }
     }
 
     function loadSavedState() {
@@ -981,12 +1000,16 @@
     document.getElementById("addBillBtn").addEventListener("click", () => {
       els.billsBody.appendChild(renderRow());
       calculate();
+      persistState();
     });
 
     document.getElementById("exampleBtn").addEventListener("click", loadExample);
-    document.getElementById("calculateBtn").addEventListener("click", calculate);
+    document.getElementById("calculateBtn").addEventListener("click", () => {
+      calculate();
+      persistState();
+    });
     document.getElementById("saveBtn").addEventListener("click", () => {
-      saveState();
+      persistState();
       calculate();
       els.echo.textContent += "\nSaved to localStorage.";
     });
@@ -1004,7 +1027,11 @@
     els.allowPastDate.addEventListener("change", () => {
       enforceStartDateRule();
       calculate();
+      persistState();
     });
+
+    window.addEventListener("beforeunload", persistState);
+    window.addEventListener("pagehide", persistState);
 
     const saved = loadSavedState();
     loadState(saved || defaultState);
