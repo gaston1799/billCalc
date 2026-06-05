@@ -111,6 +111,31 @@
       gap: 12px;
     }
 
+    .checks {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(5, 10, 22, 0.72);
+      color: var(--muted);
+    }
+
+    .check input {
+      width: auto;
+      margin: 0;
+      padding: 0;
+      accent-color: var(--accent);
+    }
+
     .field {
       display: grid;
       gap: 6px;
@@ -271,6 +296,46 @@
       .controls { grid-template-columns: 1fr; }
       .wrap { width: min(100vw - 16px, 1400px); }
     }
+
+    @media (max-width: 700px) {
+      .wrap {
+        width: min(100vw - 12px, 1400px);
+        padding-top: 10px;
+      }
+
+      header {
+        padding: 18px 16px;
+      }
+
+      .card h2, .card h3, .card .body {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+
+      .summary {
+        gap: 10px;
+      }
+
+      .stat .v {
+        font-size: 1.18rem;
+      }
+
+      .row-actions button {
+        flex: 1 1 100%;
+      }
+
+      .table-wrap {
+        border-radius: 12px;
+      }
+
+      table {
+        font-size: 0.86rem;
+      }
+
+      th, td {
+        padding: 8px 9px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -337,6 +402,17 @@
                 <option value="safe">Trim at safe target</option>
               </select>
             </div>
+          </div>
+
+          <div class="checks">
+            <label class="check">
+              <input id="meaningfulOnly" type="checkbox" checked>
+              Meaningful changes only
+            </label>
+            <label class="check">
+              <input id="allowPastDate" type="checkbox">
+              Allow past start date
+            </label>
           </div>
 
           <div class="row-actions">
@@ -462,7 +538,6 @@
 
   <script>
     const STORAGE_KEY = "billcalc-defaults-v1";
-    const monthName = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     const weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
     const els = {
@@ -472,6 +547,8 @@
       safeAmount: document.getElementById("safeAmount"),
       cushion: document.getElementById("cushion"),
       mode: document.getElementById("mode"),
+      meaningfulOnly: document.getElementById("meaningfulOnly"),
+      allowPastDate: document.getElementById("allowPastDate"),
       echo: document.getElementById("echo"),
       billsBody: document.getElementById("billsBody"),
       weeklyTable: document.querySelector("#weeklyTable tbody"),
@@ -483,12 +560,14 @@
     };
 
     const defaultState = {
-      startDate: new Date().toISOString().slice(0, 10),
+      startDate: localDateString(new Date()),
       startingBalance: 188.83,
       weeks: 4,
       safeAmount: 125,
       cushion: 200,
       mode: "full",
+      meaningfulOnly: true,
+      allowPastDate: false,
       bills: [
         { name: "Paycheck", kind: "income", repeat: "weekly", amount: 300, low: 300, high: 300, weekday: "Thursday", dayOfMonth: 1, date: "" },
         { name: "Discover", kind: "bill", repeat: "monthly", amount: 35, low: 35, high: 35, weekday: "Thursday", dayOfMonth: 11, date: "" },
@@ -501,15 +580,15 @@
       return `$${Number(value || 0).toFixed(2)}`;
     }
 
+    function localDateString(date) {
+      const copy = new Date(date);
+      const offset = copy.getTimezoneOffset() * 60000;
+      return new Date(copy.getTime() - offset).toISOString().slice(0, 10);
+    }
+
     function addDays(date, days) {
       const copy = new Date(date);
       copy.setDate(copy.getDate() + days);
-      return copy;
-    }
-
-    function addMonths(date, months) {
-      const copy = new Date(date);
-      copy.setMonth(copy.getMonth() + months);
       return copy;
     }
 
@@ -528,6 +607,10 @@
     function parseDate(value) {
       const d = new Date(`${value}T00:00:00`);
       return Number.isNaN(d.getTime()) ? null : d;
+    }
+
+    function todayOnly() {
+      return parseDate(localDateString(new Date()));
     }
 
     function setText(el, value) {
@@ -591,6 +674,20 @@
       return ends;
     }
 
+    function trimMeaningful(entries) {
+      if (entries.length <= 2) return entries;
+      const filtered = [];
+      let prevBase = null;
+      entries.forEach((entry, index) => {
+        const hasEvents = entry.events.length > 0;
+        const changed = prevBase === null || entry.base !== prevBase;
+        const keep = index === 0 || index === entries.length - 1 || hasEvents || changed;
+        if (keep) filtered.push(entry);
+        prevBase = entry.base;
+      });
+      return filtered;
+    }
+
     function summarize(events) {
       return events.length
         ? events.map((event) => `${event.name} ${event.kind === "income" ? "+" : "-"}${Math.abs(event.amount).toFixed(2)}`).join(", ")
@@ -619,15 +716,18 @@
     }
 
     function loadState(state) {
-      els.startDate.value = state.startDate;
+      els.startDate.value = state.startDate || localDateString(new Date());
       els.startingBalance.value = state.startingBalance;
       els.weeks.value = state.weeks;
       els.safeAmount.value = state.safeAmount;
       els.cushion.value = state.cushion;
       els.mode.value = state.mode || "full";
+      els.meaningfulOnly.checked = state.meaningfulOnly ?? true;
+      els.allowPastDate.checked = state.allowPastDate ?? false;
       els.billsBody.innerHTML = "";
       (state.bills || []).forEach((bill) => els.billsBody.appendChild(renderRow(bill)));
       if (!state.bills || state.bills.length === 0) els.billsBody.appendChild(renderRow());
+      enforceStartDateRule();
       calculate();
     }
 
@@ -639,6 +739,8 @@
         safeAmount: Number(els.safeAmount.value || 0),
         cushion: Number(els.cushion.value || 0),
         mode: els.mode.value,
+        meaningfulOnly: els.meaningfulOnly.checked,
+        allowPastDate: els.allowPastDate.checked,
         bills: [...els.billsBody.querySelectorAll("tr")].map((row) => normalizeBill(getRowData(row))).filter((bill) => bill.name)
       };
     }
@@ -657,9 +759,18 @@
       }
     }
 
+    function enforceStartDateRule() {
+      const today = localDateString(new Date());
+      els.startDate.min = today;
+      if (!els.allowPastDate.checked && els.startDate.value < today) {
+        els.startDate.value = today;
+      }
+    }
+
     function calculate() {
+      enforceStartDateRule();
       const state = readState();
-      const startDate = parseDate(state.startDate) || new Date();
+      const startDate = parseDate(state.startDate) || todayOnly() || new Date();
       const safeTarget = state.safeAmount + state.cushion;
       const totalDays = Math.max(1, state.weeks * 7);
       const bills = state.bills;
@@ -686,7 +797,8 @@
         });
       }
 
-      const weekly = weeklyEnds(timeline);
+      const weekly = state.meaningfulOnly ? trimMeaningful(weeklyEnds(timeline)) : weeklyEnds(timeline);
+      const daily = state.meaningfulOnly ? trimMeaningful(timeline) : timeline;
       els.weeklyTable.innerHTML = weekly.map((entry) => `
         <tr>
           <td>${entry.date}</td>
@@ -697,7 +809,7 @@
         </tr>
       `).join("");
 
-      els.dailyTable.innerHTML = timeline.map((entry) => `
+      els.dailyTable.innerHTML = daily.map((entry) => `
         <tr>
           <td>${entry.date}</td>
           <td>${entry.day}</td>
@@ -708,7 +820,7 @@
         </tr>
       `).join("");
 
-      const hit = weekly.find((entry) => entry.base >= safeTarget) || timeline.find((entry) => entry.base >= safeTarget) || null;
+      const hit = weekly.find((entry) => entry.base >= safeTarget) || daily.find((entry) => entry.base >= safeTarget) || timeline.find((entry) => entry.base >= safeTarget) || null;
       const monthEndDate = formatDate(endOfMonth(startDate));
       const monthEndEntry = timeline.find((entry) => entry.date === monthEndDate) || timeline.at(-1);
       setText(els.startBalancePreview, money(state.startingBalance));
@@ -724,6 +836,7 @@
         `Safe target: ${money(safeTarget)}`,
         `Forecast horizon: ${state.weeks} week(s)`,
         modeLine,
+        state.meaningfulOnly ? "Display: meaningful changes only" : "Display: full forecast",
         hit ? `Target hit on ${hit.date} with base ${money(hit.base)}` : "Target not reached in horizon",
         monthEndEntry ? `Month end on ${monthEndEntry.date} with base ${money(monthEndEntry.base)}` : "No month-end data"
       ];
@@ -752,9 +865,14 @@
       els.echo.textContent += "\nCleared saved data.";
     });
 
-    [els.startDate, els.startingBalance, els.weeks, els.safeAmount, els.cushion, els.mode].forEach((el) => {
+    [els.startDate, els.startingBalance, els.weeks, els.safeAmount, els.cushion, els.mode, els.meaningfulOnly, els.allowPastDate].forEach((el) => {
       el.addEventListener("input", calculate);
       el.addEventListener("change", calculate);
+    });
+
+    els.allowPastDate.addEventListener("change", () => {
+      enforceStartDateRule();
+      calculate();
     });
 
     const saved = loadSavedState();
