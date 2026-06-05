@@ -554,6 +554,18 @@
     const STORAGE_KEY = "billcalc-defaults-v1";
     const weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 
+    function ensurePurchaseDayPreview() {
+      let preview = document.getElementById("purchaseDayPreview");
+      if (preview) return preview;
+      const summary = document.querySelector(".summary");
+      if (!summary) return null;
+      const stat = document.createElement("div");
+      stat.className = "stat";
+      stat.innerHTML = '<div class="k">Purchase day</div><div class="v" id="purchaseDayPreview">--</div>';
+      summary.appendChild(stat);
+      return stat.querySelector("#purchaseDayPreview");
+    }
+
     const els = {
       startDate: document.getElementById("startDate"),
       startingBalance: document.getElementById("startingBalance"),
@@ -572,7 +584,8 @@
       startBalancePreview: document.getElementById("startBalancePreview"),
       safeTargetPreview: document.getElementById("safeTargetPreview"),
       targetHitPreview: document.getElementById("targetHitPreview"),
-      monthEndPreview: document.getElementById("monthEndPreview")
+      monthEndPreview: document.getElementById("monthEndPreview"),
+      purchaseDayPreview: ensurePurchaseDayPreview()
     };
 
     const defaultState = {
