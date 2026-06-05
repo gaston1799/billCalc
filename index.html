@@ -738,6 +738,9 @@
       let low = startBalance;
       let base = startBalance;
       let high = startBalance;
+      let seenPurchase = false;
+      let minLowAfterPurchase = null;
+      let purchaseBaseAfterPurchase = null;
 
       for (let i = 0; i < totalDays; i += 1) {
         const date = addDays(startDate, i);
@@ -752,22 +755,40 @@
           low += deltaForScenario(purchaseEvent, "low");
           base += deltaForScenario(purchaseEvent, "base");
           high += deltaForScenario(purchaseEvent, "high");
+          purchaseBaseAfterPurchase = base;
+          seenPurchase = true;
         }
 
-        if (low < safeTarget) {
-          return null;
+        if (seenPurchase) {
+          minLowAfterPurchase = minLowAfterPurchase === null ? low : Math.min(minLowAfterPurchase, low);
         }
       }
 
-      return true;
+      return {
+        finalLow: low,
+        finalBase: base,
+        finalHigh: high,
+        purchaseBaseAfterPurchase,
+        minLowAfterPurchase
+      };
     }
 
     function findBestPurchaseDate(startDate, totalDays, bills, purchaseEvent, safeTarget, startBalance) {
       if (!purchaseEvent) return null;
       for (let i = 0; i < totalDays; i += 1) {
         const candidate = formatDate(addDays(startDate, i));
-        const ok = simulateWithPurchase(startDate, totalDays, bills, purchaseEvent, candidate, safeTarget, startBalance);
-        if (ok) return candidate;
+        const candidateMonthEnd = endOfMonth(parseDate(candidate));
+        const candidateWindowDays = daysBetweenInclusive(startDate, candidateMonthEnd);
+        const result = simulateWithPurchase(startDate, candidateWindowDays, bills, purchaseEvent, candidate, safeTarget, startBalance);
+        if (!result) continue;
+        if (
+          result.purchaseBaseAfterPurchase !== null &&
+          result.purchaseBaseAfterPurchase >= safeTarget &&
+          result.finalBase >= safeTarget &&
+          (result.minLowAfterPurchase === null || result.minLowAfterPurchase >= 0)
+        ) {
+          return candidate;
+        }
       }
       return null;
     }
@@ -855,17 +876,20 @@
       const startDate = parseDate(state.startDate) || todayOnly() || new Date();
       const safeTarget = state.safeAmount + state.cushion;
       const totalDays = Math.max(1, state.weeks * 7);
-      const purchaseWindowDays = daysBetweenInclusive(startDate, endOfMonth(startDate));
       const bills = state.bills;
       const purchaseEvent = createPurchaseEvent(state);
-      const purchaseDate = findBestPurchaseDate(startDate, purchaseWindowDays, bills, purchaseEvent, safeTarget, state.startingBalance);
+      const purchaseSearchDays = Math.max(totalDays, 365);
+      const purchaseDate = findBestPurchaseDate(startDate, purchaseSearchDays, bills, purchaseEvent, safeTarget, state.startingBalance);
       const billsWithPurchase = purchaseDate ? bills.concat({ ...purchaseEvent, date: purchaseDate }) : bills;
+      const timelineDays = purchaseDate
+        ? Math.max(totalDays, daysBetweenInclusive(startDate, endOfMonth(parseDate(purchaseDate))))
+        : totalDays;
       const timeline = [];
       let low = state.startingBalance;
       let base = state.startingBalance;
       let high = state.startingBalance;
 
-      for (let i = 0; i < totalDays; i += 1) {
+      for (let i = 0; i < timelineDays; i += 1) {
         const date = addDays(startDate, i);
         const dayBills = billsWithPurchase.filter((bill) => billMatchesDate(bill, date) || (bill.repeat === "once" && bill.date === formatDate(date)));
         dayBills.forEach((bill) => {
